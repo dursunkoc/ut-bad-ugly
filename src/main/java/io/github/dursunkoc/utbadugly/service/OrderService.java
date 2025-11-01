@@ -2,6 +2,7 @@ package io.github.dursunkoc.utbadugly.service;
 
 import io.github.dursunkoc.utbadugly.domain.*;
 import io.github.dursunkoc.utbadugly.entity.Product;
+import io.github.dursunkoc.utbadugly.entity.ProductShipmentCode;
 import io.github.dursunkoc.utbadugly.exception.InvalidPaymentException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -33,17 +34,18 @@ public class OrderService {
             return OrderResponse.builder().error("Product not found").build();
         }
 
-//        List<Map<String, Object>> products = jdbc.queryForList("SELECT * FROM product WHERE id=" + req.getProductId());
-//        if (products.isEmpty()) return OrderResponse.builder().error("Product not found").build();
-//        Map<String, Object> product = products.get(0);
         double price = product.getPrice();
         int orderId = new Random().nextInt(100000);
         jdbc.update("INSERT INTO orders VALUES (?, ?, ?, ?, ?)", orderId, req.getProductId(), req.getQuantity(), true, false);
         jdbc.update("UPDATE warehouse SET stock = stock - ? WHERE id=1", req.getQuantity());
-        List<Map<String, Object>> shipmentCodes = jdbc.queryForList("SELECT shipment_code FROM product_shipment_code WHERE product_id=" + req.getProductId() + " AND city='" + req.getCity() + "'");
-        if (shipmentCodes.isEmpty())
+
+        ProductShipmentCode productShipmentCode = productService.getShipmentCode(req.getProductId(), req.getCity());
+        if (productShipmentCode==null) {
             return OrderResponse.builder().error("Shipment code not found for product/city").build();
-        String shipmentCode = (String) shipmentCodes.get(0).get("shipment_code");
+        }
+
+        String shipmentCode = productShipmentCode.getShipmentCode();
+
         StartShipmentRequest shipmentRequest = StartShipmentRequest.builder()
                 .customer_id(req.getCustomerId())
                 .customer_address(req.getCustomerAddress())
