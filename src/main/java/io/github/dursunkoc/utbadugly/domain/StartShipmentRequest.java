@@ -8,8 +8,8 @@ import lombok.*;
 @NoArgsConstructor
 @AllArgsConstructor
 public class StartShipmentRequest {
-    private int customer_id;
-    private String customer_address;
-    private String product_shipment_code;
+    private int customerId;
+    private String customerAddress;
+    private String productShipmentCode;
 }
 

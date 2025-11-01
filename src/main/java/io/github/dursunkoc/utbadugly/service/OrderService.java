@@ -19,7 +19,7 @@ public class OrderService {
     private final JdbcTemplate jdbc;
     private final PaymentService paymentService;
     private final ProductService productService;
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final ShipmentService shipmentService;
 
     public OrderResponse createOrder(OrderRequest req) {
 
@@ -46,17 +46,8 @@ public class OrderService {
 
         String shipmentCode = productShipmentCode.getShipmentCode();
 
-        StartShipmentRequest shipmentRequest = StartShipmentRequest.builder()
-                .customer_id(req.getCustomerId())
-                .customer_address(req.getCustomerAddress())
-                .product_shipment_code(shipmentCode)
-                .build();
-        StartShipmentResponse shipmentResponse = restTemplate.postForObject(
-                "http://localhost:8082/start-shipment",
-                shipmentRequest,
-                StartShipmentResponse.class
-        );
-        boolean shipped = shipmentResponse != null && shipmentResponse.isShipped();
+        boolean shipped = shipmentService.startShipment(req.getCustomerId(), req.getCustomerAddress(), shipmentCode);
+
         if (shipped) {
             jdbc.update("UPDATE orders SET shipped=true WHERE id=?", orderId);
         }
