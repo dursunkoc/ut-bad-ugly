@@ -1,6 +1,7 @@
 package io.github.dursunkoc.utbadugly.service;
 
 import io.github.dursunkoc.utbadugly.domain.*;
+import io.github.dursunkoc.utbadugly.entity.Product;
 import io.github.dursunkoc.utbadugly.exception.InvalidPaymentException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -16,6 +17,7 @@ import java.util.Random;
 public class OrderService {
     private final JdbcTemplate jdbc;
     private final PaymentService paymentService;
+    private final ProductService productService;
     private final RestTemplate restTemplate = new RestTemplate();
 
     public OrderResponse createOrder(OrderRequest req) {
@@ -26,10 +28,15 @@ public class OrderService {
             return OrderResponse.builder().error("Payment validation failed").build();
         }
 
-        List<Map<String, Object>> products = jdbc.queryForList("SELECT * FROM product WHERE id=" + req.getProductId());
-        if (products.isEmpty()) return OrderResponse.builder().error("Product not found").build();
-        Map<String, Object> product = products.get(0);
-        double price = (Double) product.get("price");
+        Product product = productService.findById(req.getProductId());
+        if (product == null) {
+            return OrderResponse.builder().error("Product not found").build();
+        }
+
+//        List<Map<String, Object>> products = jdbc.queryForList("SELECT * FROM product WHERE id=" + req.getProductId());
+//        if (products.isEmpty()) return OrderResponse.builder().error("Product not found").build();
+//        Map<String, Object> product = products.get(0);
+        double price = product.getPrice();
         int orderId = new Random().nextInt(100000);
         jdbc.update("INSERT INTO orders VALUES (?, ?, ?, ?, ?)", orderId, req.getProductId(), req.getQuantity(), true, false);
         jdbc.update("UPDATE warehouse SET stock = stock - ? WHERE id=1", req.getQuantity());
@@ -53,7 +60,7 @@ public class OrderService {
         }
         return OrderResponse.builder()
                 .orderId(orderId)
-                .product((String) product.get("name"))
+                .product(product.getName())
                 .quantity(req.getQuantity())
                 .total(price * req.getQuantity())
                 .shipped(shipped)
