@@ -1,7 +1,7 @@
 package io.github.dursunkoc.utbadugly.service;
 
 import io.github.dursunkoc.utbadugly.domain.*;
-import lombok.NoArgsConstructor;
+import io.github.dursunkoc.utbadugly.exception.InvalidPaymentException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -15,24 +15,14 @@ import java.util.Random;
 @RequiredArgsConstructor
 public class OrderService {
     private final JdbcTemplate jdbc;
+    private final PaymentService paymentService;
     private final RestTemplate restTemplate = new RestTemplate();
-    private static final String CLIENT_ID = "badugly-client";
-    private static final String CLIENT_SECRET = "badugly-secret";
 
     public OrderResponse createOrder(OrderRequest req) {
-        PaymentValidationRequest paymentRequest = PaymentValidationRequest.builder()
-                .provisionNumber(req.getProvisionNumber())
-                .clientSecret(CLIENT_SECRET)
-                .clientId(CLIENT_ID)
-                .build();
 
-        PaymentValidationResponse paymentResponse = restTemplate.postForObject(
-                "http://localhost:8081/validate-payment",
-                paymentRequest,
-                PaymentValidationResponse.class
-        );
+        boolean validProvision = paymentService.validateProvision(req.getProvisionNumber());
 
-        if (paymentResponse == null || !paymentResponse.isValid()) {
+        if (!validProvision) {
             return OrderResponse.builder().error("Payment validation failed").build();
         }
 
