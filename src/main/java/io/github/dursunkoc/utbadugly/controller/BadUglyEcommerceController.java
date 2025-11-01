@@ -1,0 +1,78 @@
+package io.github.dursunkoc.utbadugly.controller;
+
+import io.github.dursunkoc.utbadugly.domain.OrderRequest;
+import io.github.dursunkoc.utbadugly.domain.OrderResponse;
+import io.github.dursunkoc.utbadugly.domain.PaymentValidationRequest;
+import io.github.dursunkoc.utbadugly.domain.PaymentValidationResponse;
+import io.github.dursunkoc.utbadugly.domain.StartShipmentRequest;
+import io.github.dursunkoc.utbadugly.domain.StartShipmentResponse;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.client.RestTemplate;
+
+import java.util.*;
+
+@RestController
+public class BadUglyEcommerceController {
+    private final JdbcTemplate jdbc;
+    private final RestTemplate restTemplate = new RestTemplate();
+    private static final String CLIENT_ID = "badugly-client";
+    private static final String CLIENT_SECRET = "badugly-secret";
+
+    public BadUglyEcommerceController(JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
+    }
+
+    // Bad endpoint: create order, pay, ship all at once
+    @PostMapping("/order")
+    public OrderResponse createOrder(@RequestBody OrderRequest req) {
+        PaymentValidationRequest paymentRequest = PaymentValidationRequest.builder()
+                .provisionNumber(req.getProvisionNumber())
+                .clientSecret(CLIENT_SECRET)
+                .clientId(CLIENT_ID)
+                .build();
+
+        PaymentValidationResponse paymentResponse = restTemplate.postForObject(
+            "http://localhost:8081/validate-payment",
+            paymentRequest,
+            PaymentValidationResponse.class
+        );
+
+        if (paymentResponse == null || !paymentResponse.isValid()) {
+            return OrderResponse.builder().error("Payment validation failed").build();
+        }
+
+        List<Map<String, Object>> products = jdbc.queryForList("SELECT * FROM product WHERE id=" + req.getProductId());
+        if (products.isEmpty()) return OrderResponse.builder().error("Product not found").build();
+        Map<String, Object> product = products.get(0);
+        double price = (Double) product.get("price");
+        int orderId = new Random().nextInt(100000);
+        jdbc.update("INSERT INTO orders VALUES (?, ?, ?, ?, ?)", orderId, req.getProductId(), req.getQuantity(), true, false);
+        jdbc.update("UPDATE warehouse SET stock = stock - ? WHERE id=1", req.getQuantity());
+        List<Map<String, Object>> shipmentCodes = jdbc.queryForList("SELECT shipment_code FROM product_shipment_code WHERE product_id=" + req.getProductId() + " AND city='" + req.getCity() + "'");
+        if (shipmentCodes.isEmpty()) return OrderResponse.builder().error("Shipment code not found for product/city").build();
+        String shipmentCode = (String) shipmentCodes.get(0).get("shipment_code");
+        StartShipmentRequest shipmentRequest = StartShipmentRequest.builder()
+            .customer_id(req.getCustomer_id())
+            .customer_address(req.getCustomer_address())
+            .product_shipment_code(shipmentCode)
+            .build();
+        StartShipmentResponse shipmentResponse = restTemplate.postForObject(
+            "http://localhost:8082/start-shipment",
+            shipmentRequest,
+            StartShipmentResponse.class
+        );
+        boolean shipped = shipmentResponse != null && shipmentResponse.isShipped();
+        if (shipped) {
+            jdbc.update("UPDATE orders SET shipped=true WHERE id=?", orderId);
+        }
+        return OrderResponse.builder()
+                .orderId(orderId)
+                .product((String) product.get("name"))
+                .quantity(req.getQuantity())
+                .total(price * req.getQuantity())
+                .shipped(shipped)
+                .paid(true)
+                .build();
+    }
+}
